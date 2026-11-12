@@ -213,6 +213,9 @@ void splice_after(iterator pos, basic_intrusive_forward_list&& other, iterator f
 - 被搬移的节点始终处于纳管状态，地址和迭代器不变；不会先脱管再挂接。
 - `pos` 必须属于 `*this`，且不能位于被搬移的范围内。违反这些前置条件是未定义行为；
   实现会对部分自拼接情形做防御性无操作，但不要依赖它。
+- 链表不保存尾指针，所以整链版本在 `pos` 不是尾节点时，需要遍历 `other` 找到其末尾
+  再接到 `pos` 原来的后继上；复杂度为 `O(m)`（`m` 为 `other` 的大小）。`pos` 是尾节点
+  （包括空链的 `before_begin()`）时是 `O(1)`。
 
 ## 裁剪与替换尾段
 
@@ -335,10 +338,10 @@ friend void swap(basic_intrusive_forward_list& a, basic_intrusive_forward_list& 
   也不调用删除器。之后节点仍然存活，可以重新插入别的链，或者由用户销毁。
 - 反过来，**在节点仍然纳管时销毁节点是未定义行为**：链上的前驱仍指向它。销毁节点
   前应先通过 `erase_after` / `clear` 让它脱管，或先让链表对象析构。
-- 链表不可复制；**可移动**。移动构造 / 移动赋值只转移头尾链接，节点保持纳管，
+- 链表不可复制；**可移动**。移动构造 / 移动赋值只转移首节点链接，节点保持纳管，
   源链表变为空链；移动赋值会先让目标原有的节点脱管（不销毁）。节点本身不可复制。
-- 链表对象只持有 `before_begin` 锚点和尾指针。节点从不指向锚点，所以链表析构后
-  节点之间不会留下指向已销毁对象的链接。
+- 链表对象只持有 `before_begin` 锚点（一个 `next` 链接），**不保存尾指针**。节点从不
+  指向锚点，所以链表析构后节点之间不会留下指向已销毁对象的链接。
 
 ## 接口对齐与差异
 
@@ -377,7 +380,8 @@ friend void swap(basic_intrusive_forward_list& a, basic_intrusive_forward_list& 
 |-:|:-|
 |`insert_after` / `push_front` / `erase_after`（单点）/ `pop_front` / `front` / `empty` / 迭代器|常数|
 |`erase_after`（范围）/ `splice_after`（范围）|与范围长度成线性|
-|`splice_after`（整链）/ `cut_after` / `replace_tail_after` / `swap`|常数|
+|`splice_after`（整链）|`O(m)`；`pos` 是尾节点时为常数（`m` 为 `other` 大小）|
+|`cut_after` / `replace_tail_after` / `swap`|常数|
 |移动构造|常数|
 |移动赋值|`O(n)`（先脱管目标原有节点）|
 |`clear` / `reverse` / `remove_if` / `unique`|`O(n)`|

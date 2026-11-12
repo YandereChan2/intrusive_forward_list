@@ -205,7 +205,7 @@ namespace Yc
     //   before_begin().base()->next 是首节点（空链为 nullptr）；
     //   end() 是空指针。
     // 节点本身从不指向这个锚点，所以析构链表时只要把节点逐个脱管即可，
-    // 不会留下指向链表对象的悬空链接。
+    // 不会留下指向链表对象的悬空链接。链表对象只持有这个锚点，不保存尾指针。
     //
     // 插入接口（insert_after / push_front）要求传入的节点已经脱管
     //（is_released() == true）。插入一个仍被任何链表纳管的节点是
@@ -215,7 +215,7 @@ namespace Yc
     //（无删除器版本）。erase_after 是唯一的单点脱管原语；clear 和
     // 析构函数都是反复对 before_begin 调用 erase_after。
     //
-    // 链表不可复制；可移动（移动只转移头 / 尾链接，源链表变为空链）。
+    // 链表不可复制；可移动（移动只转移首节点链接，源链表变为空链）。
     // ===================================================================
     template<class vptr>
     class basic_intrusive_forward_list
@@ -233,7 +233,6 @@ namespace Yc
         using const_reference = const node_type&;
     private:
         node_type before_begin_{};
-        node_ptr tail_{};
 
         static node_ptr to_node_ptr(node_type& node)noexcept
         {
@@ -257,7 +256,6 @@ namespace Yc
         basic_intrusive_forward_list()noexcept
         {
             before_begin_.next = node_ptr{};
-            tail_ = node_ptr{};
         }
         // 析构链表对象：让链上所有节点脱管（next 自指），不销毁任何节点。
         ~basic_intrusive_forward_list()
@@ -266,14 +264,12 @@ namespace Yc
         }
         basic_intrusive_forward_list(const basic_intrusive_forward_list&) = delete;
         basic_intrusive_forward_list& operator=(const basic_intrusive_forward_list&) = delete;
-        // 移动只转移头 / 尾链接；节点仍然纳管，源链表变为空链。
+        // 移动只转移首节点链接；节点仍然纳管，源链表变为空链。
         basic_intrusive_forward_list(basic_intrusive_forward_list&& other)noexcept
             : basic_intrusive_forward_list()
         {
             before_begin_.next = other.before_begin_.next;
-            tail_ = other.tail_;
             other.before_begin_.next = node_ptr{};
-            other.tail_ = node_ptr{};
         }
         // 移动赋值先让目标原有的节点脱管（不销毁），再接管源链表的节点。
         basic_intrusive_forward_list& operator=(basic_intrusive_forward_list&& other)noexcept
@@ -282,9 +278,7 @@ namespace Yc
             {
                 clear();
                 before_begin_.next = other.before_begin_.next;
-                tail_ = other.tail_;
                 other.before_begin_.next = node_ptr{};
-                other.tail_ = node_ptr{};
             }
             return *this;
         }
@@ -294,9 +288,6 @@ namespace Yc
             node_ptr head = before_begin_.next;
             before_begin_.next = other.before_begin_.next;
             other.before_begin_.next = head;
-            node_ptr tail = tail_;
-            tail_ = other.tail_;
-            other.tail_ = tail;
         }
         friend void swap(basic_intrusive_forward_list& a, basic_intrusive_forward_list& b)noexcept
         {
@@ -369,10 +360,6 @@ namespace Yc
             node_ptr np = to_node_ptr(node);
             node.next = next;
             prev->next = np;
-            if (next == node_ptr{})
-            {
-                tail_ = np;
-            }
             return iterator{ np };
         }
         void push_front(node_type& node)noexcept
@@ -410,10 +397,6 @@ namespace Yc
             node_ptr next = target->next;
             prev->next = next;
             target->detach();
-            if (next == node_ptr{})
-            {
-                tail_ = (prev == to_node_ptr(before_begin_)) ? node_ptr{} : prev;
-            }
             return iterator{ next };
         }
         // 脱管 pos 后面的节点，先脱管再调用 del(node)，返回原来的后继。
@@ -434,10 +417,6 @@ namespace Yc
             node_ptr next = target->next;
             prev->next = next;
             target->detach();
-            if (next == node_ptr{})
-            {
-                tail_ = (prev == to_node_ptr(before_begin_)) ? node_ptr{} : prev;
-            }
             del(*target);
             return iterator{ next };
         }
@@ -491,7 +470,6 @@ namespace Yc
             {
                 erase_after(before_begin());
             }
-            tail_ = node_ptr{};
         }
         // 让链上所有节点脱管，并对每个节点调用 del。异常从 del 抛出时，
         // 已经处理的节点已脱管并交给 del，剩余节点仍留在链上。
@@ -502,7 +480,6 @@ namespace Yc
             {
                 erase_after(before_begin(), del);
             }
-            tail_ = node_ptr{};
         }
 
         // ---------------- 拼接 ----------------
@@ -516,23 +493,26 @@ namespace Yc
             }
             node_ptr p = pos.base();
             node_ptr first = other.before_begin_.next;
-            node_ptr last = other.tail_;
             node_ptr after = p->next;
             p->next = first;
-            last->next = after;
-            if (after == node_ptr{})
+            if (after != node_ptr{})
             {
-                tail_ = last;
+                // 没有尾指针：pos 不是尾节点时，要走到 other 的末尾再接到 after。
+                node_ptr last = first;
+                while (last->next != node_ptr{})
+                {
+                    last = last->next;
+                }
+                last->next = after;
             }
             other.before_begin_.next = node_ptr{};
-            other.tail_ = node_ptr{};
         }
         void splice_after(iterator pos, basic_intrusive_forward_list&& other)noexcept
         {
             splice_after(pos, other);
         }
         // 把 other 中 it 后面的那个节点搬到 pos 之后。it 本身留在 other。
-        void splice_after(iterator pos, basic_intrusive_forward_list& other, iterator it)noexcept
+        void splice_after(iterator pos, basic_intrusive_forward_list&, iterator it)noexcept
         {
             node_ptr prev = it.base();
             if (prev == node_ptr{})
@@ -551,17 +531,9 @@ namespace Yc
             }
             node_ptr after = moved->next;
             prev->next = after;
-            if (after == node_ptr{})
-            {
-                other.tail_ = (prev == to_node_ptr(other.before_begin_)) ? node_ptr{} : prev;
-            }
             node_ptr pos_next = p->next;
             p->next = moved;
             moved->next = pos_next;
-            if (pos_next == node_ptr{})
-            {
-                tail_ = moved;
-            }
         }
         void splice_after(iterator pos, basic_intrusive_forward_list&& other, iterator it)noexcept
         {
@@ -569,7 +541,7 @@ namespace Yc
         }
         // 把 other 中 (first, last) 之间的节点搬到 pos 之后；last 仍然
         // 有效（last 留在 other）。first 和 last 本身不移动。
-        void splice_after(iterator pos, basic_intrusive_forward_list& other, iterator first, iterator last)noexcept
+        void splice_after(iterator pos, basic_intrusive_forward_list&, iterator first, iterator last)noexcept
         {
             node_ptr f = first.base();
             node_ptr l = last.base();
@@ -608,18 +580,10 @@ namespace Yc
             }
             // 从 other 摘下 (first, last)
             f->next = l;
-            if (l == node_ptr{})
-            {
-                other.tail_ = (f == to_node_ptr(other.before_begin_)) ? node_ptr{} : f;
-            }
             // 接到 pos 后面
             node_ptr after = p->next;
             p->next = range_first;
             range_last->next = after;
-            if (after == node_ptr{})
-            {
-                tail_ = range_last;
-            }
         }
         void splice_after(iterator pos, basic_intrusive_forward_list&& other, iterator first, iterator last)noexcept
         {
@@ -639,15 +603,8 @@ namespace Yc
             {
                 return tail;
             }
-            node_ptr first = p->next;
-            if (first == node_ptr{})
-            {
-                return tail;
-            }
-            tail.before_begin_.next = first;
-            tail.tail_ = tail_;
+            tail.before_begin_.next = p->next;
             p->next = node_ptr{};
-            tail_ = (p == to_node_ptr(before_begin_)) ? node_ptr{} : p;
             return tail;
         }
 
@@ -802,10 +759,6 @@ namespace Yc
                     node_ptr next2 = cur2->next;
                     // cur2 是 other 的首节点，从 other 摘下
                     other.before_begin_.next = next2;
-                    if (next2 == node_ptr{})
-                    {
-                        other.tail_ = node_ptr{};
-                    }
                     // 插到 prev 后面
                     prev->next = cur2;
                     cur2->next = cur1;
@@ -822,13 +775,7 @@ namespace Yc
             {
                 // other 剩下的整段直接接在末尾，O(1)
                 prev->next = cur2;
-                tail_ = other.tail_;
                 other.before_begin_.next = node_ptr{};
-                other.tail_ = node_ptr{};
-            }
-            else if (cur1 == node_ptr{})
-            {
-                tail_ = prev;
             }
         }
         template<class Compare>
@@ -929,9 +876,8 @@ namespace Yc
             {
                 return;
             }
-            node_ptr old_head = before_begin_.next;
             node_ptr prev{};
-            node_ptr cur = old_head;
+            node_ptr cur = before_begin_.next;
             while (cur != node_ptr{})
             {
                 node_ptr next = cur->next;
@@ -940,7 +886,6 @@ namespace Yc
                 cur = next;
             }
             before_begin_.next = prev;
-            tail_ = old_head;
         }
     };
 

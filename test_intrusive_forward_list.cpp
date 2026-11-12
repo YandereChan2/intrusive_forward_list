@@ -19,6 +19,8 @@ using base = Yc::intrusive_forward_list_node_base<void*>;
 using list = Yc::basic_intrusive_forward_list<void*>;
 
 static_assert(std::is_same_v<Yc::intrusive_forward_list<>, list>);
+// 没有尾指针：链表只持有一个 before_begin 锚点。
+static_assert(sizeof(list) == sizeof(list::node_ptr));
 
 // 节点自己不能脱管：没有公开的 release()。
 template<class T>
