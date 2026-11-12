@@ -26,6 +26,21 @@ static_assert(sizeof(list) == sizeof(list::node_ptr));
 template<class T>
 concept has_release = requires(T& n) { n.release(); };
 static_assert(!has_release<base>);
+
+// 不提供 emplace_*：插入统一走 insert_after / push_front。
+template<class T>
+concept has_emplace_after = requires(T& l, typename T::iterator pos, typename T::node_type& n)
+{
+    l.emplace_after(pos, n);
+};
+template<class T>
+concept has_emplace_front = requires(T& l, typename T::node_type& n)
+{
+    l.emplace_front(n);
+};
+static_assert(!has_emplace_after<list>);
+static_assert(!has_emplace_front<list>);
+
 static_assert(std::forward_iterator<list::iterator>);
 static_assert(std::forward_iterator<list::const_iterator>);
 
@@ -310,17 +325,6 @@ static void test_basic()
     // 空链的 clear 是空操作
     l.clear();
     assert(l.empty());
-
-    // emplace_* 与 insert_after / push_front 等价，只是名字对齐
-    node e(5, 5);
-    node f(6, 6);
-    l.emplace_front(e);
-    auto ei = l.emplace_after(l.begin(), f);
-    assert(&*ei == &f);
-    assert((values(l) == std::vector<int>{5, 6}));
-    check_tail(l);
-    l.clear();
-    assert(e.is_released() && f.is_released());
 }
 
 static void test_erase_with_deleter()

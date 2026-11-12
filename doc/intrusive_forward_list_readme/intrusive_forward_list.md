@@ -104,14 +104,11 @@ _链表_ 不拥有任何 _节点_：节点的创建、析构由用户负责，�
 
 ```C++
 iterator insert_after(iterator pos, node_type& node) noexcept;
-iterator emplace_after(iterator pos, node_type& node) noexcept;
 void     push_front(node_type& node) noexcept;
-node_type& emplace_front(node_type& node) noexcept;
 ```
 
-在 `pos` 之后挂接 `node`，或在表头挂接 `node`。`insert_after` / `emplace_after`
-返回指向 `node` 的迭代器；`emplace_front` 返回 `node` 的引用。`emplace_*` 只是
-为对齐 `std::forward_list` 的名字而保留，参数仍然是节点，不构造元素。
+在 `pos` 之后挂接 `node`，或在表头挂接 `node`。`insert_after` 返回指向 `node`
+的迭代器；`push_front` 不返回值。
 
 ### 前置条件（重要）
 
@@ -123,9 +120,10 @@ node_type& emplace_front(node_type& node) noexcept;
 
 ### 说明
 
-- 与 `std::forward_list::insert_after` / `emplace_after` 不同（尽管本类保留了同名
-  接口）：这里不构造元素，只挂接一个已经存在、已经脱管的节点。需要就地构造 `T`
-  时，先构造节点，再用 `insert_after` 挂接。
+- 与 `std::forward_list::insert_after` 不同：这里不构造元素，只挂接一个已经存在、
+  已经脱管的节点。需要就地构造 `T` 时，先构造节点，再用 `insert_after` 挂接。
+- 不提供 `emplace_after` / `emplace_front`：侵入式链表没有元素构造语义，统一用
+  `insert_after` / `push_front`。
 - 常数时间；不分配内存、不搬移元素。
 - `insert_after` 不会检查 `node` 是否已在链上，因此不要用它做"移动节点"；
   移动已纳管的节点请用 [`splice_after`](#splice_after)。
@@ -350,8 +348,8 @@ friend void swap(basic_intrusive_forward_list& a, basic_intrusive_forward_list& 
 
 |`std::forward_list`|本类|
 |-:|:-|
-|`insert_after(pos, value)` / `emplace_after(pos, args...)`|`insert_after(pos, node&)` / `emplace_after(pos, node&)`（不构造元素）|
-|`push_front(value)` / `emplace_front(args...)`|`push_front(node&)` / `emplace_front(node&)`（不构造元素）|
+|`insert_after(pos, value)` / `emplace_after(pos, args...)`|`insert_after(pos, node&)`；不提供 `emplace_after`|
+|`push_front(value)` / `emplace_front(args...)`|`push_front(node&)`；不提供 `emplace_front`|
 |`erase_after(pos)`|`erase_after(pos)` 只脱管；`erase_after(pos, del)` 删除|
 |`erase_after(first, last)`|同形；`(first, last)` 开区间|
 |`pop_front()`|`pop_front()` 只脱管；`pop_front(del)` 删除|

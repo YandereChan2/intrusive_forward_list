@@ -366,17 +366,6 @@ namespace Yc
         {
             insert_after(before_begin(), node);
         }
-        // 与 std::forward_list 的 emplace_* 同名，但侵入式版本不构造元素：
-        // 只是把已经脱管的节点插入（等价于 insert_after / push_front）。
-        iterator emplace_after(iterator pos, node_type& node)noexcept
-        {
-            return insert_after(pos, node);
-        }
-        node_type& emplace_front(node_type& node)noexcept
-        {
-            push_front(node);
-            return node;
-        }
 
         // ---------------- 移除 ----------------
         // 脱管 pos 后面的节点，返回它原来的后继（脱管的是尾节点时返回 end()）。
